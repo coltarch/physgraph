@@ -798,167 +798,24 @@ function generateGraph() {
   sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ── Download — matplotlib-style rendered PNG ──────────────────────────────────
+// ── Download ─────────────────────────────────────────────────────────────────
 function downloadGraph() {
   if (!activeChart) return;
+  const title = document.getElementById('graphTitle').value || 'graph';
+  const slug = title.replace(/[^a-z0-9]/gi, '_').toLowerCase().replace(/_+/g, '_');
 
-  const title  = document.getElementById('graphTitle').value || 'Graph';
-  const sub    = document.getElementById('graphSub').value   || '';
-  const xLbl   = document.getElementById('xLabel').value     || 'X';
-  const yLbl   = document.getElementById('yLabel').value     || 'Y';
-  const color  = selectedColor;
-  const data   = getTableData();
-  const slug   = title.replace(/[^a-z0-9]/gi, '_').toLowerCase().replace(/_+/g, '_');
+  const src = activeChart.canvas;
+  const off = document.createElement('canvas');
+  off.width  = src.width;
+  off.height = src.height;
+  const ctx = off.getContext('2d');
+  ctx.fillStyle = '#0f1419';
+  ctx.fillRect(0, 0, off.width, off.height);
+  ctx.drawImage(src, 0, 0);
 
-  const { slope, intercept } = linReg(data);
-
-  // ── Canvas setup ──────────────────────────────────────────────────────────
-  const W = 1260, H = 780;
-  const PAD = { top: 90, right: 60, bottom: 90, left: 100 };
-  const PW = W - PAD.left - PAD.right;
-  const PH = H - PAD.top  - PAD.bottom;
-
-  const c   = document.createElement('canvas');
-  c.width   = W; c.height = H;
-  const cx  = c.getContext('2d');
-
-  // ── Background ────────────────────────────────────────────────────────────
-  cx.fillStyle = '#0d1117';
-  cx.fillRect(0, 0, W, H);
-
-  // ── Top accent gradient bar ───────────────────────────────────────────────
-  const bar = cx.createLinearGradient(60, 0, W - 60, 0);
-  bar.addColorStop(0, color + '33');
-  bar.addColorStop(1, color);
-  cx.fillStyle = bar;
-  cx.fillRect(60, 14, W - 120, 7);
-
-  // ── Title ─────────────────────────────────────────────────────────────────
-  cx.fillStyle = '#e6edf3';
-  cx.font = 'bold 22px "Courier New", monospace';
-  cx.textAlign = 'center';
-  cx.fillText(title, W / 2, 52);
-  if (sub) {
-    cx.fillStyle = '#5a7080';
-    cx.font = '13px "Courier New", monospace';
-    cx.fillText(sub, W / 2, 70);
-  }
-
-  // ── Plot area background ──────────────────────────────────────────────────
-  cx.fillStyle = '#161b22';
-  cx.fillRect(PAD.left, PAD.top, PW, PH);
-
-  // ── Axis ranges ───────────────────────────────────────────────────────────
-  const xs = data.map(p => p.x), ys = data.map(p => p.y);
-  const xMin = Math.min(...xs), xMax = Math.max(...xs);
-  const yMin = Math.min(...ys), yMax = Math.max(...ys);
-  const xPad = (xMax - xMin) * 0.15 || 0.1;
-  const yPad = (yMax - yMin) * 0.18 || 0.05;
-  const xLo = xMin - xPad, xHi = xMax + xPad;
-  const yLo = Math.max(0, yMin - yPad), yHi = yMax + yPad;
-
-  function toCanvasX(v) { return PAD.left + (v - xLo) / (xHi - xLo) * PW; }
-  function toCanvasY(v) { return PAD.top  + PH - (v - yLo) / (yHi - yLo) * PH; }
-
-  // ── Grid lines ────────────────────────────────────────────────────────────
-  cx.strokeStyle = '#21262d';
-  cx.lineWidth = 0.8;
-
-  function niceSteps(lo, hi, n) {
-    const raw = (hi - lo) / n;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const norm = raw / mag;
-    const nice = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
-    const step = nice * mag;
-    const start = Math.ceil(lo / step) * step;
-    const vals = [];
-    for (let v = start; v <= hi + step * 0.001; v += step) vals.push(+v.toPrecision(10));
-    return vals;
-  }
-
-  const xTicks = niceSteps(xLo, xHi, 6);
-  const yTicks = niceSteps(yLo, yHi, 6);
-
-  xTicks.forEach(v => {
-    const x = toCanvasX(v);
-    cx.beginPath(); cx.moveTo(x, PAD.top); cx.lineTo(x, PAD.top + PH); cx.stroke();
-  });
-  yTicks.forEach(v => {
-    const y = toCanvasY(v);
-    cx.beginPath(); cx.moveTo(PAD.left, y); cx.lineTo(PAD.left + PW, y); cx.stroke();
-  });
-
-  // ── Axis border ───────────────────────────────────────────────────────────
-  cx.strokeStyle = '#30363d';
-  cx.lineWidth = 1.2;
-  cx.strokeRect(PAD.left, PAD.top, PW, PH);
-
-  // ── Tick labels ───────────────────────────────────────────────────────────
-  cx.fillStyle = '#8b949e';
-  cx.font = '13px "Courier New", monospace';
-  cx.textAlign = 'center';
-  xTicks.forEach(v => {
-    cx.fillText(+v.toFixed(4).replace(/\.?0+$/, ''), toCanvasX(v), PAD.top + PH + 20);
-  });
-  cx.textAlign = 'right';
-  yTicks.forEach(v => {
-    cx.fillText(+v.toFixed(4).replace(/\.?0+$/, ''), PAD.left - 10, toCanvasY(v) + 4);
-  });
-
-  // ── Axis labels ───────────────────────────────────────────────────────────
-  cx.fillStyle = '#8b949e';
-  cx.font = '14px "Courier New", monospace';
-  cx.textAlign = 'center';
-  cx.fillText(xLbl, PAD.left + PW / 2, H - 18);
-
-  cx.save();
-  cx.translate(20, PAD.top + PH / 2);
-  cx.rotate(-Math.PI / 2);
-  cx.fillText(yLbl, 0, 0);
-  cx.restore();
-
-  // ── Trend line ────────────────────────────────────────────────────────────
-  cx.strokeStyle = color + '60';
-  cx.lineWidth = 2;
-  cx.setLineDash([8, 5]);
-  cx.beginPath();
-  cx.moveTo(toCanvasX(xLo), toCanvasY(slope * xLo + intercept));
-  cx.lineTo(toCanvasX(xHi), toCanvasY(slope * xHi + intercept));
-  cx.stroke();
-  cx.setLineDash([]);
-
-  // ── Data points ───────────────────────────────────────────────────────────
-  data.forEach(p => {
-    const px = toCanvasX(p.x), py = toCanvasY(p.y);
-    // Glow
-    const grd = cx.createRadialGradient(px, py, 0, px, py, 14);
-    grd.addColorStop(0, color + '55');
-    grd.addColorStop(1, 'transparent');
-    cx.fillStyle = grd;
-    cx.beginPath(); cx.arc(px, py, 14, 0, Math.PI * 2); cx.fill();
-    // Solid dot
-    cx.fillStyle = color;
-    cx.beginPath(); cx.arc(px, py, 7, 0, Math.PI * 2); cx.fill();
-    // White ring
-    cx.strokeStyle = 'rgba(255,255,255,0.55)';
-    cx.lineWidth = 0.8;
-    cx.beginPath(); cx.arc(px, py, 7, 0, Math.PI * 2); cx.stroke();
-  });
-
-  // ── Equation annotation ───────────────────────────────────────────────────
-  const sign = intercept >= 0 ? '+ ' : '− ';
-  const eqStr = `y = ${slope.toFixed(4)}x ${sign}${Math.abs(intercept).toFixed(4)}`;
-  cx.font = '13px "Courier New", monospace';
-  cx.textAlign = 'right';
-  cx.fillStyle = color;
-  cx.globalAlpha = 0.85;
-  cx.fillText(eqStr, PAD.left + PW - 12, PAD.top + PH - 14);
-  cx.globalAlpha = 1;
-
-  // ── Save ──────────────────────────────────────────────────────────────────
   const link = document.createElement('a');
   link.download = `${slug}.png`;
-  link.href = c.toDataURL('image/png');
+  link.href = off.toDataURL('image/png');
   link.click();
 }
 </script>
